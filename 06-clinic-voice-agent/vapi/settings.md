@@ -2,7 +2,7 @@
 
 ## Model
 - Provider: Groq
-- Model: GPT OSS 120B
+- Model: Llama 4 Maverick 17B 128e Instruct
 - Latency: ~280ms
 
 ## Voice
