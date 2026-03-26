@@ -1,1 +1,727 @@
-
+{
+  "name": "Clinic AI Receptionist - Final",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clinic-basic",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "9f67c2d2-1c9a-49ce-93d7-8d1768efb5c6",
+      "name": "Vapi Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        192
+      ],
+      "webhookId": "879ccc4c-c6f2-4baf-935d-85f7fb6ecc52"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst msg = body.message || body;\nconst call = msg.call || {};\n\nlet functionName = null;\nlet functionParams = {};\nlet toolCallId = null;\n\nif (msg.type === 'tool-calls' && msg.toolCallList && msg.toolCallList.length > 0) {\n  const tc = msg.toolCallList[0];\n  functionName = tc.function?.name || null;\n  toolCallId = tc.id || null;\n  try {\n    functionParams = typeof tc.function?.arguments === 'string'\n      ? JSON.parse(tc.function.arguments)\n      : (tc.function?.arguments || {});\n  } catch(e) { functionParams = {}; }\n} else if (msg.type === 'function-call' && msg.functionCall) {\n  functionName = msg.functionCall.name || null;\n  functionParams = msg.functionCall.parameters || {};\n}\n\nconst rawType = msg.type || 'unknown';\nconst eventType = (rawType === 'tool-calls') ? 'function-call' : rawType;\n\nreturn [{ json: {\n  eventType,\n  rawType,\n  callId:        call.id || ('call_' + Date.now()),\n  callerNumber:  call.customer?.number || call.phoneNumber?.number || 'unknown',\n  functionName,\n  functionParams,\n  toolCallId,\n  endedReason:   msg.endedReason || null,\n  durationSecs:  msg.durationSeconds || 0,\n  summary:       msg.summary || null,\n  timestamp:     new Date().toISOString()\n}}];"
+      },
+      "id": "4d7ae299-ff64-453b-81ac-b9bf6f8b5e79",
+      "name": "Parse Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const today = new Date();\n\nfunction toYMD(d) {\n  return d.toISOString().split('T')[0];\n}\n\nfunction getNextWeekday(targetDay) {\n  const d = new Date(today);\n  let diff = targetDay - d.getDay();\n  if (diff <= 0) diff += 7;\n  d.setDate(d.getDate() + diff);\n  return toYMD(d);\n}\n\nfunction getNextWorkday() {\n  const d = new Date(today);\n  d.setDate(d.getDate() + 1);\n  while (d.getDay() === 0 || d.getDay() === 6) {\n    d.setDate(d.getDate() + 1);\n  }\n  return toYMD(d);\n}\n\nconst hour = today.getHours();\nconst dow = today.getDay();\nlet isOpen = false;\nif (dow >= 1 && dow <= 5 && hour >= 9 && hour < 17) isOpen = true;\nif (dow === 6 && hour >= 10 && hour < 14) isOpen = true;\n\nconst dateMap = {\n  monday:    getNextWeekday(1),\n  tuesday:   getNextWeekday(2),\n  wednesday: getNextWeekday(3),\n  thursday:  getNextWeekday(4),\n  friday:    getNextWeekday(5),\n  tomorrow:  getNextWorkday(),\n  asap:      getNextWorkday(),\n  anytime:   getNextWorkday()\n};\n\nconst input = $input.first().json;\nreturn [{ json: {\n  ...input,\n  dateMap,\n  isOpen,\n  todayStr: toYMD(today),\n  nextAvailableDate: getNextWorkday()\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        192
+      ],
+      "id": "5433d0a5-a163-4004-9f3d-73bda2d3b191",
+      "name": "Dynamic Dates"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "re1",
+              "leftValue": "={{ $json.eventType }}",
+              "rightValue": "function-call",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5fc85766-ce5e-4345-aefe-538e7c704883",
+      "name": "Route Event",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "rf1",
+              "leftValue": "={{ $json.functionName }}",
+              "rightValue": "getAvailableSlots",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "65c1b4db-bfde-42df-9c7e-eeed710555ca",
+      "name": "Route Function",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1n0ZxNGvRzOYAlwFzX3EXd-PDu1vowpbFCUtCsmUvlkE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 103602007,
+          "mode": "list",
+          "cachedResultName": "Appointments",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1n0ZxNGvRzOYAlwFzX3EXd-PDu1vowpbFCUtCsmUvlkE/edit#gid=103602007"
+        },
+        "options": {}
+      },
+      "id": "2ece2511-23fd-4ee1-8129-d5d14c95234d",
+      "name": "Read Appointments",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        0,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "U5f3YHXDtkRTtrGI",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const params = $('Parse Event').first().json.functionParams || {};\nlet date = params.preferredDate || params.date || '';\n\nconst today = new Date();\nfunction toYMD(d) { return d.toISOString().split('T')[0]; }\nfunction getNextWeekday(t) {\n  const d = new Date(today);\n  let diff = t - d.getDay();\n  if (diff <= 0) diff += 7;\n  d.setDate(d.getDate() + diff);\n  return toYMD(d);\n}\nfunction getNextWorkday() {\n  const d = new Date(today);\n  d.setDate(d.getDate() + 1);\n  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);\n  return toYMD(d);\n}\n\nconst lower = date.toLowerCase().trim();\nif (lower === 'monday')         date = getNextWeekday(1);\nelse if (lower === 'tuesday')   date = getNextWeekday(2);\nelse if (lower === 'wednesday') date = getNextWeekday(3);\nelse if (lower === 'thursday')  date = getNextWeekday(4);\nelse if (lower === 'friday')    date = getNextWeekday(5);\nelse if (['asap','anytime','tomorrow',''].includes(lower)) date = getNextWorkday();\n\nlet items = [];\ntry {\n  items = $input.all().filter(i => i.json?.date && i.json.date.trim() !== '');\n} catch(e) {}\n\nconst booked = items\n  .filter(r => r.json.date === date && r.json.status !== 'cancelled')\n  .map(r => r.json.time);\n\nconst all = [];\nfor (let h = 9; h < 17; h++) {\n  all.push(`${String(h).padStart(2,'0')}:00`);\n  all.push(`${String(h).padStart(2,'0')}:30`);\n}\nconst free = all.filter(s => !booked.includes(s));\n\nconst result = free.length > 0\n  ? `Available slots on ${date}: ${free.slice(0, 6).join(', ')}.`\n  : `No slots on ${date}.`;\n\nreturn [{ json: { result, available: free, date } }];"
+      },
+      "id": "585c3601-6df8-450a-ae24-baa753ba6449",
+      "name": "Calculate Slots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const toolCallId = $('Parse Event').first().json.toolCallId || '';\nconst result = $('Calculate Slots').first().json.result || 'No slots available.';\nconst response = JSON.stringify({\n  results: [{ toolCallId, result }]\n});\nreturn [{ json: { response } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "cb1cf14f-acec-4169-ba02-687e45d527d8",
+      "name": "Prepare Slot Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "55d9a67e-2408-442c-9447-42780ec05025",
+      "name": "Respond Slots",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Parse Event').first().json;\nconst params = input.functionParams || {};\nconst date = params.date || '';\nconst time = params.time || '';\n\nconst items = $input.all();\nconst conflict = items.find(r =>\n  r.json?.date === date &&\n  r.json?.time === time &&\n  r.json?.status === 'confirmed'\n);\n\nif (conflict) {\n  return [{ json: {\n    slotAvailable: false,\n    conflict: true,\n    message: `${time} on ${date} was just booked. Please choose another time.`,\n    ...params,\n    timestamp: input.timestamp,\n    callId: input.callId\n  }}];\n}\n\nreturn [{ json: {\n  slotAvailable: true,\n  conflict: false,\n  ...params,\n  timestamp: input.timestamp,\n  callId: input.callId\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        192
+      ],
+      "id": "1d98ebd1-f4d0-45ab-9f34-ed17a0234b4f",
+      "name": "Double Booking Guard"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Parse Event').first().json;\nconst params = input.functionParams || {};\n\n// Use provided number or fall back to caller ID\nlet raw = (params.patientPhone || '').trim();\nif (!raw || raw === 'unknown') {\n  raw = input.callerNumber || '';\n}\n\n// Strip everything except digits and leading +\nlet digits = raw.replace(/[^0-9+]/g, '');\n\n// Pakistani local 0300xxxxxxx (11 digits) → +92300xxxxxxx\nif (digits.startsWith('0') && digits.length === 11) {\n  digits = '+92' + digits.slice(1);\n} else if (digits.length > 0 && !digits.startsWith('+')) {\n  digits = '+' + digits;\n}\n\nreturn [{ json: {\n  patientName:  params.patientName,\n  patientPhone: digits,\n  date:         params.date,\n  time:         params.time,\n  reason:       params.reason,\n  doctorName:   params.doctorName || 'Next Available',\n  timestamp:    input.timestamp,\n  callId:       input.callId\n}}];"
+      },
+      "id": "7d9bcfae-0996-483a-8267-405598f1efe0",
+      "name": "Normalize Phone",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1n0ZxNGvRzOYAlwFzX3EXd-PDu1vowpbFCUtCsmUvlkE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Appointments",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "appointmentId": "={{ 'APT-' + Date.now() + '-' + Math.random().toString(36).slice(2,6).toUpperCase() }}",
+            "patientName": "={{ $json.patientName }}",
+            "patientPhone": "={{ $json.patientPhone }}",
+            "date": "={{ $json.date }}",
+            "time": "={{ $json.time }}",
+            "reason": "={{ $json.reason }}",
+            "doctorName": "={{ $json.doctorName || 'Next Available' }}",
+            "status": "=confirmed",
+            "bookedAt": "={{ new Date($json.timestamp).toLocaleString('en-US', {year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) }}",
+            "callId": "={{ $json.callId }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "appointmentId",
+              "displayName": "appointmentId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "patientName",
+              "displayName": "patientName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "patientPhone",
+              "displayName": "patientPhone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "time",
+              "displayName": "time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "doctorName",
+              "displayName": "doctorName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bookedAt",
+              "displayName": "bookedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "callId",
+              "displayName": "callId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duration",
+              "displayName": "duration",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "fdcf2697-5837-4b22-be6e-6fad896669c6",
+      "name": "Save Appointment",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        448,
+        192
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "U5f3YHXDtkRTtrGI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "its.pirahsanraza@gmail.com",
+        "subject": "={{ '🗓 New Appointment — ' + $json.patientName + ' on ' + $json.date + ' at ' + $json.time }}",
+        "message": "=<p>Hi,</p>\n\n<p>A new appointment has been booked via the AI receptionist.</p>\n\n<table style=\"border-collapse: collapse; width: 100%; max-width: 500px;\">\n  <tr style=\"background:#f5f5f5;\">\n    <td style=\"padding: 8px 12px; font-weight: bold;\">Patient Name</td>\n    <td style=\"padding: 8px 12px;\">{{ $json.patientName }}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 8px 12px; font-weight: bold;\">Phone</td>\n    <td style=\"padding: 8px 12px;\">{{ $json.patientPhone }}</td>\n  </tr>\n  <tr style=\"background:#f5f5f5;\">\n    <td style=\"padding: 8px 12px; font-weight: bold;\">Date</td>\n    <td style=\"padding: 8px 12px;\">{{ $json.date }}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 8px 12px; font-weight: bold;\">Time</td>\n    <td style=\"padding: 8px 12px;\">{{ $json.time }}</td>\n  </tr>\n  <tr style=\"background:#f5f5f5;\">\n    <td style=\"padding: 8px 12px; font-weight: bold;\">Reason</td>\n    <td style=\"padding: 8px 12px;\">{{ $json.reason }}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 8px 12px; font-weight: bold;\">Doctor</td>\n    <td style=\"padding: 8px 12px;\">{{ $json.doctorName || 'Next Available' }}</td>\n  </tr>\n</table>\n\n<p style=\"margin-top: 16px;\">\n  Please confirm availability and follow up with the patient if needed.\n</p>\n\n<p style=\"color: #888; font-size: 12px;\">\n  Clinic-X AI Receptionist — powered by Vapi + n8n\n</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        192
+      ],
+      "id": "5dd18e78-e593-40ba-b8de-9623e5a42ed0",
+      "name": "Send a message",
+      "webhookId": "87d68dd8-90de-4f85-bb9b-33d4b2605e53",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ppgWXD03e4yX2OAG",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ results: [{ toolCallId: $('Parse Event').first().json.toolCallId || '', result: 'Appointment confirmed for ' + $('Parse Event').first().json.functionParams.patientName + ' on ' + $('Parse Event').first().json.functionParams.date + ' at ' + $('Parse Event').first().json.functionParams.time + '. The clinic has been notified and will follow up shortly.' }] }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "e27e01af-e5f1-4d73-bfda-4c936ea535f9",
+      "name": "Respond Appointment Booked",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        896,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1n0ZxNGvRzOYAlwFzX3EXd-PDu1vowpbFCUtCsmUvlkE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CallLog",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "callId": "={{ 'CALL-' + $json.callId.split('-')[0].toUpperCase() }}",
+            "callerNumber": "={{ $json.callerNumber }}",
+            "timestamp": "={{ new Date($json.timestamp).toLocaleString('en-US', {year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) }}",
+            "durationSecs": "={{ $json.durationSecs }}",
+            "endedReason": "={{ $json.endedReason }}",
+            "outcome": "={{ $json.endedReason === 'customer-ended-call' ? 'Completed' : $json.endedReason === 'silence-timed-out' ? 'No Response' : 'Ended' }}",
+            "appointmentBooked": "={{ $json.endedReason === 'customer-ended-call' ? 'Check Appointments Sheet' : 'No' }}",
+            "durationFormatted": "={{ Math.floor($json.durationSecs / 60) + 'm ' + Math.round($json.durationSecs % 60) + 's' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "callId",
+              "displayName": "callId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "callerNumber",
+              "displayName": "callerNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "durationSecs",
+              "displayName": "durationSecs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "endedReason",
+              "displayName": "endedReason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "appointmentBooked",
+              "displayName": "appointmentBooked",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "durationFormatted",
+              "displayName": "durationFormatted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "642c67cb-de4a-4e3d-8522-c6d0e02dff43",
+      "name": "Log Call",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -224,
+        384
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "U5f3YHXDtkRTtrGI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "95e01e83-e520-4b46-96fc-8f1ddd8d3919",
+      "name": "Respond Call Logged",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        0,
+        384
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Vapi Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Event": {
+      "main": [
+        [
+          {
+            "node": "Dynamic Dates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dynamic Dates": {
+      "main": [
+        [
+          {
+            "node": "Route Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Event": {
+      "main": [
+        [
+          {
+            "node": "Route Function",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Function": {
+      "main": [
+        [
+          {
+            "node": "Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Double Booking Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Calculate Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Slots": {
+      "main": [
+        [
+          {
+            "node": "Prepare Slot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Slot Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Double Booking Guard": {
+      "main": [
+        [
+          {
+            "node": "Normalize Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Phone": {
+      "main": [
+        [
+          {
+            "node": "Save Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Appointment": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Respond Appointment Booked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Call": {
+      "main": [
+        [
+          {
+            "node": "Respond Call Logged",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "3ad84dd9-2ea9-4aa1-a6f7-76be36a666c4",
+  "meta": {
+    "instanceId": "dd597a534e73b40931fc3285592fb0e71573175f4fde207426706bc7ee462db0"
+  },
+  "id": "yaGgdf3bpx4MXTzN",
+  "tags": []
+}
