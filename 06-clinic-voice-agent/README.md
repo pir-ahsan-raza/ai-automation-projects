@@ -43,4 +43,4 @@ Import [`n8n/workflow.json`](./n8n/workflow.json) directly into n8n.
 ## Notes
 - Pakistani number format (0300xxxxxxx) auto-converts to +92 E.164
 - Caller's number used as fallback if patient skips phone input
-- Double booking guard prevents race condition on same slot
+- Double booking guard prevents race condition on same slot!
